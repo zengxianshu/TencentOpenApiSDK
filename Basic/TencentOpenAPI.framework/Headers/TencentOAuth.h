@@ -8,7 +8,6 @@
 
 #import <UIKit/UIKit.h>
 #import "sdkdef.h"
-#import "TencentOAuthObject.h"
 
 @protocol TencentSessionDelegate;
 @protocol TencentLoginDelegate;
@@ -83,6 +82,42 @@ typedef enum
 /** 授权方式(Client Side Token或者Server Side Code) */
 @property(nonatomic, assign) TencentAuthMode authMode;
 
+/** union id */
+@property(nonatomic, retain) NSString* unionid;
+
+/** 第三方在授权登录/分享 时选择 QQ，还是TIM 。在授权前一定要指定其中一个类型*/
+@property(nonatomic, assign) TencentAuthShareType authShareType;
+
+/**
+ * 获取上次登录得到的token
+ *
+ **/
+- (NSString *)getCachedToken;
+
+/**
+ * 获取上次登录得到的openid
+ *
+ **/
+- (NSString *)getCachedOpenID;
+
+/**
+ * 获取上次登录的token过期日期
+ *
+ **/
+- (NSDate *)getCachedExpirationDate;
+
+/**
+ * 上次登录的token是否过期
+ *
+ **/
+- (BOOL)isCachedTokenValid;
+
+/**
+ * 删除上次登录登录的token信息
+ *
+ **/
+- (BOOL)deleteCachedToken;
+
 /**
  * 用来获得当前sdk的版本号
  * \return 返回sdk版本号
@@ -120,6 +155,13 @@ typedef enum
  **/
 + (QQVersion)iphoneQQVersion;
 
+
+/**
+ * 用来获得当前手机TIM的版本号
+ * \return 返回手机qq版本号
+ **/
++ (QQVersion)iphoneTIMVersion;
+
 /**
  * 初始化TencentOAuth对象
  * \param appId 第三方应用在互联开放平台申请的唯一标识
@@ -133,8 +175,22 @@ typedef enum
 /**
  * 判断用户手机上是否安装手机QQ
  * \return YES:安装 NO:没安装
+ *
+ * \note SDK目前已经支持QQ、TIM授权登录及分享功能， 会按照QQ>TIM的顺序进行调用。
+ * 只要用户安装了QQ、TIM中任意一个应用，都可为第三方应用进行授权登录、分享功能。
+ * 第三方应用在接入SDK时不需要判断是否安装QQ、TIM。若有判断安装QQ、TIM的逻辑建议移除。
  */
 + (BOOL)iphoneQQInstalled;
+
+/**
+ * 判断用户手机上是否安装手机TIM
+ * \return YES:安装 NO:没安装
+ *
+ * \note SDK目前已经支持QQ、TIM授权登录及分享功能， 会按照QQ>TIM的顺序进行调用。
+ * 只要用户安装了QQ、TIM中任意一个应用，都可为第三方应用进行授权登录、分享功能。
+ * 第三方应用在接入SDK时不需要判断是否安装QQ、TIM。若有判断安装QQ、TIM的逻辑建议移除。
+ */
++ (BOOL)iphoneTIMInstalled;
  
 /**
  * 判断用户手机上的手机QQ是否支持SSO登录
@@ -143,16 +199,10 @@ typedef enum
 + (BOOL)iphoneQQSupportSSOLogin;
 
 /**
- * 判断用户手机上是否安装手机QZone
- * \return YES:安装 NO:没安装
- */
-+ (BOOL)iphoneQZoneInstalled;
-
-/**
- * 判断用户手机上的手机QZone是否支持SSO登录
+ * 判断用户手机上的手机TIM是否支持SSO登录
  * \return YES:支持 NO:不支持
  */
-+ (BOOL)iphoneQZoneSupportSSOLogin;
++ (BOOL)iphoneTIMSupportSSOLogin;
 
 /**
  * 登录授权
@@ -180,6 +230,13 @@ typedef enum
 		 inSafari:(BOOL)bInSafari;
 
 /**
+ * 登录授权<web为二维码扫码方式>
+ *
+ * \param permissions 授权信息列
+ */
+- (BOOL)authorizeWithQRlogin:(NSArray *)permissions;
+
+/**
  * 增量授权，因用户没有授予相应接口调用的权限，需要用户确认是否授权
  * \param permissions 需增量授权的信息列表
  * \return 增量授权调用是否成功
@@ -192,6 +249,12 @@ typedef enum
  * \return 授权调用是否成功
  */
 - (BOOL)reauthorizeWithPermissions:(NSArray *)permissions;
+
+/**
+ * 获取UnindID,可以根据UnindID的比较来确定OpenID是否属于同一个用户
+ * \return NO未登录，信息不足；YES条件满足，发送请求成功，请等待回调
+ */
+- (BOOL)RequestUnionId;
 
 /**
  * (静态方法)处理应用拉起协议
@@ -235,14 +298,6 @@ typedef enum
  * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
  */
 - (BOOL)getUserInfo;
-
-/**
- * SDK内置webview实现定向分享时，第三方应用可以根据应用是否在白名单里来开启该配置开关，默认为关闭；
- * 在白名单里的应用调用该接口后，即打开sdk内置webview的二级白名单开关（相对与sdk后台的白名单），
- * 那么在sdk后台白名单校验请求失败的情况下，会继续先尝试采用内置webview进行分享。
- */
-- (void)openSDKWebViewQQShareEnable;
-
 
 /**
  * 退出指定API调用
@@ -305,6 +360,10 @@ typedef enum
  */
 - (NSArray *)getAuthorizedPermissions:(NSArray *)permissions withExtraParams:(NSDictionary *)extraParams;
 
+/**
+ * unionID获得
+ */
+- (void)didGetUnionID;
 @end
 
 #pragma mark - TencentSessionDelegate(开放接口回调协议)
@@ -363,7 +422,6 @@ typedef enum
 - (void)getUserInfoResponse:(APIResponse*) response;
 
 
-
 /**
  * 社交API统一回调接口
  * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
@@ -388,7 +446,6 @@ typedef enum
  * \param viewController 需要关闭的viewController
  */
 - (void)tencentOAuth:(TencentOAuth *)tencentOAuth doCloseViewController:(UIViewController *)viewController;
-
 @end
 
 #pragma mark - TencentWebViewDelegate(H5登录webview旋转方向回调)

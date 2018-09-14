@@ -13,7 +13,7 @@ Pod::Spec.new do |s|
   s.platform            = :ios
   s.requires_arc        = true
 
-  s.source              = { :git=> "https://github.com/candyan/TencentOpenApiSDK.git", :tag => "#{s.version}" }
+  s.source              = { :git=> "https://github.com/ls19491314/TencentOpenApiSDK.git", :tag => "#{s.version}" }
   s.xcconfig            = { "FRAMEWORK_SEARCH_PATHS" => "$(inherited)" }
 
   s.libraries      = 'iconv', 'z', 'c++', 'sqlite3'

@@ -8,16 +8,30 @@
 
 #import <UIKit/UIKit.h>
 #import "sdkdef.h"
-#import "TencentOAuthObject.h"
-#import "WeiBoAPI.h"
-#import "WeiyunAPI.h"
 
 @protocol TencentSessionDelegate;
 @protocol TencentLoginDelegate;
 @protocol TencentApiInterfaceDelegate;
+@protocol TencentWebViewDelegate;
 
 @class TencentApiReq;
 @class TencentApiResp;
+
+typedef enum
+{
+    kTencentNotAuthorizeState,
+    kTencentSSOAuthorizeState,
+    kTencentWebviewAuthorzieState,
+} TencentAuthorizeState;
+
+typedef enum
+{
+    kAuthModeClientSideToken,
+    kAuthModeServerSideCode,
+} TencentAuthMode;
+
+#pragma mark - TencentOAuth(授权登录及相关开放接口调用)
+
 /**
  * \brief TencentOpenAPI授权登录及相关开放接口调用
  *
@@ -56,14 +70,97 @@
 /** 第三方应用在互联开放平台申请的appID */
 @property(nonatomic, retain) NSString* appId;
 
+/** 主要是互娱的游戏设置uin */
+@property(nonatomic, retain) NSString* uin;
+
+/** 主要是互娱的游戏设置鉴定票据 */
+@property(nonatomic, retain) NSString* skey;
+
 /** 登陆透传的数据 */
 @property(nonatomic, copy) NSDictionary* passData;
 
+/** 授权方式(Client Side Token或者Server Side Code) */
+@property(nonatomic, assign) TencentAuthMode authMode;
+
+/** union id */
+@property(nonatomic, retain) NSString* unionid;
+
+/** 第三方在授权登录/分享 时选择 QQ，还是TIM 。在授权前一定要指定其中一个类型*/
+@property(nonatomic, assign) TencentAuthShareType authShareType;
 
 /**
- * 返回sdk的版本号
- */
-+ (NSString *)sdkVerison;
+ * 获取上次登录得到的token
+ *
+ **/
+- (NSString *)getCachedToken;
+
+/**
+ * 获取上次登录得到的openid
+ *
+ **/
+- (NSString *)getCachedOpenID;
+
+/**
+ * 获取上次登录的token过期日期
+ *
+ **/
+- (NSDate *)getCachedExpirationDate;
+
+/**
+ * 上次登录的token是否过期
+ *
+ **/
+- (BOOL)isCachedTokenValid;
+
+/**
+ * 删除上次登录登录的token信息
+ *
+ **/
+- (BOOL)deleteCachedToken;
+
+/**
+ * 用来获得当前sdk的版本号
+ * \return 返回sdk版本号
+ **/
+
++ (NSString*)sdkVersion;
+
+/**
+ * 用来获得当前sdk的小版本号
+ * \return 返回sdk小版本号
+ **/
+
++ (NSString*)sdkSubVersion;
+
+/**
+ * 用来获得当前sdk的是否精简版
+ * \return 返回YES表示精简版
+ **/
+
++ (BOOL)isLiteSDK;
+
+/** 
+ * 主要是用来帮助判断是否有登陆被发起，但是还没有过返回结果 
+ * \return 
+ *          kTencentNotAuthorizeState:无授权 
+ *          kTencentSSOAuthorizeState:有人发起了sso授权但无返回
+ *          kTencentWebviewAuthorzieState:有人发起了webview授权还未返回
+ **/
+
++ (TencentAuthorizeState *)authorizeState;
+
+/**
+ * 用来获得当前手机qq的版本号
+ * \return 返回手机qq版本号
+ **/
++ (QQVersion)iphoneQQVersion;
+
+
+/**
+ * 用来获得当前手机TIM的版本号
+ * \return 返回手机qq版本号
+ **/
++ (QQVersion)iphoneTIMVersion;
 
 /**
  * 初始化TencentOAuth对象
@@ -78,8 +175,22 @@
 /**
  * 判断用户手机上是否安装手机QQ
  * \return YES:安装 NO:没安装
+ *
+ * \note SDK目前已经支持QQ、TIM授权登录及分享功能， 会按照QQ>TIM的顺序进行调用。
+ * 只要用户安装了QQ、TIM中任意一个应用，都可为第三方应用进行授权登录、分享功能。
+ * 第三方应用在接入SDK时不需要判断是否安装QQ、TIM。若有判断安装QQ、TIM的逻辑建议移除。
  */
 + (BOOL)iphoneQQInstalled;
+
+/**
+ * 判断用户手机上是否安装手机TIM
+ * \return YES:安装 NO:没安装
+ *
+ * \note SDK目前已经支持QQ、TIM授权登录及分享功能， 会按照QQ>TIM的顺序进行调用。
+ * 只要用户安装了QQ、TIM中任意一个应用，都可为第三方应用进行授权登录、分享功能。
+ * 第三方应用在接入SDK时不需要判断是否安装QQ、TIM。若有判断安装QQ、TIM的逻辑建议移除。
+ */
++ (BOOL)iphoneTIMInstalled;
  
 /**
  * 判断用户手机上的手机QQ是否支持SSO登录
@@ -88,23 +199,13 @@
 + (BOOL)iphoneQQSupportSSOLogin;
 
 /**
- * 判断用户手机上是否安装手机QZone
- * \return YES:安装 NO:没安装
- */
-+ (BOOL)iphoneQZoneInstalled;
-
-/**
- * 判断用户手机上的手机QZone是否支持SSO登录
+ * 判断用户手机上的手机TIM是否支持SSO登录
  * \return YES:支持 NO:不支持
  */
-+ (BOOL)iphoneQZoneSupportSSOLogin;
++ (BOOL)iphoneTIMSupportSSOLogin;
 
 /**
- * 登录授权 / DAU统计  <b>SDK 1.9版本以后，登录授权接口建议使用该接口，以前接口将会废弃 </b>
- *
- * if:((openid != nil) && (accesstoken != nil)) ,进行统计DAU操作，并验证token是否有效
- * esle: 进行登录授权操作
- * 如果统计DAU时，发现token失效，将自动进入登录流程
+ * 登录授权
  *
  * \param permissions 授权信息列
  */
@@ -129,6 +230,13 @@
 		 inSafari:(BOOL)bInSafari;
 
 /**
+ * 登录授权<web为二维码扫码方式>
+ *
+ * \param permissions 授权信息列
+ */
+- (BOOL)authorizeWithQRlogin:(NSArray *)permissions;
+
+/**
  * 增量授权，因用户没有授予相应接口调用的权限，需要用户确认是否授权
  * \param permissions 需增量授权的信息列表
  * \return 增量授权调用是否成功
@@ -141,6 +249,12 @@
  * \return 授权调用是否成功
  */
 - (BOOL)reauthorizeWithPermissions:(NSArray *)permissions;
+
+/**
+ * 获取UnindID,可以根据UnindID的比较来确定OpenID是否属于同一个用户
+ * \return NO未登录，信息不足；YES条件满足，发送请求成功，请等待回调
+ */
+- (BOOL)RequestUnionId;
 
 /**
  * (静态方法)处理应用拉起协议
@@ -157,7 +271,18 @@
 + (BOOL)CanHandleOpenURL:(NSURL *)url;
 
 /**
- * 退出登录
+ * (静态方法)获取TencentOAuth调用的上一次错误信息
+ */
++ (NSString *)getLastErrorMsg;
+
+/**
+ * 以Server Side Code模式授权登录时，通过此接口获取返回的code值;
+ * 以Client Side Token模式授权登录时，忽略此接口。
+ */
+- (NSString *)getServerSideCode;
+
+/**
+ * 退出登录(退出登录后，TecentOAuth失效，需要重新初始化)
  * \param delegate 第三方应用用于接收请求返回结果的委托对象
  */
 - (void)logout:(id<TencentSessionDelegate>)delegate;
@@ -173,158 +298,6 @@
  * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
  */
 - (BOOL)getUserInfo;
-
-/**
- * 获取用户QZone相册列表
- * \attention 需\ref apply_perm
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)getListAlbum;
-
-/**
- * 获取用户QZone相片列表
- * \attention 需\ref apply_perm
- * \param params 参数字典,字典的关键字参见TencentOAuthObject.h中的\ref TCListPhotoDic
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)getListPhotoWithParams:(NSMutableDictionary *)params;
-
-
-/**
- * 分享到QZone
- * \param params 参数字典,字典的关键字参见TencentOAuthObject.h中的\ref TCAddShareDic 
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)addShareWithParams:(NSMutableDictionary *)params;
-
-
-/**
- * 上传照片到QZone指定相册
- * \attention 需\ref apply_perm
- * \param params 参数字典,字典的关键字参见TencentOAuthObject.h中的\ref TCUploadPicDic
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)uploadPicWithParams:(NSMutableDictionary *)params;
-
-/**
- * 在QZone相册中创建一个新的相册
- * \attention 需\ref apply_perm
- * \param params 参数字典,字典的关键字参见TencentOAuthObject.h中的\ref TCAddAlbumDic
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)addAlbumWithParams:(NSMutableDictionary *)params;
-
-/**
- * 检查是否是QZone某个用户的粉丝
- * \param params 参数字典,字典的关键字参见TencentOAuthObject.h中的\ref TCCheckPageFansDic
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)checkPageFansWithParams:(NSMutableDictionary *)params;
-
-/**
- * 在QZone中发表一篇日志
- * \attention 需\ref apply_perm
- * \param params 参数字典,字典的关键字参见TencentOAuthObject.h中的\ref TCAddOneBlogDic
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)addOneBlogWithParams:(NSMutableDictionary *)params;
-
-/**
- * 在QZone中发表一条说说
- * \attention 需\ref apply_perm
- * \param params 参数字典,字典的关键字参见TencentOAuthObject.h中的\ref TCAddTopicDic
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)addTopicWithParams:(NSMutableDictionary *)params;
-
-/**
- * 设置QQ头像 使用默认的效果处理设置头像的界面
- * \attention 需\ref apply_perm
- * \param params 参数字典,字典的关键字参见TencentOAuthObject.h中的\ref TCSetUserHeadpic
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)setUserHeadpic:(NSMutableDictionary *)params;
-
-
-/**
- * 设置QQ头像 会返回设置头像由第三方自己处理界面的弹出方式
- * \attention 需\ref apply_perm
- * \param params 参数字典,字典的关键字参见TencentOAuthObject.h中的\ref TCSetUserHeadpic
- * \param viewController 设置头像的界面
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)setUserHeadpic:(NSMutableDictionary *)params andViewController:(UIViewController **)viewController;
-
-/**
- * 获取QQ会员信息(仅包括是否为QQ会员,是否为年费QQ会员)
- * \attention 需\ref apply_perm
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)getVipInfo;
-
-/**
- * 获取QQ会员详细信息
- * \attention 需\ref apply_perm
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)getVipRichInfo;
-
-/**
- * 获取微博好友名称输入提示,即通过字符串查找匹配的微博好友
- * \param params 参数字典,字典的关键字参见TencentOAuthObject.h中的\ref TCMatchNickTipsDic
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)matchNickTips:(NSMutableDictionary *)params;
-
-/**
- * 获取最近的微博好友
- * \param params 参数字典,字典的关键字参见TencentOAuthObject.h中的\ref TCGetIntimateFriendsDic
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)getIntimateFriends:(NSMutableDictionary *)params;
-
-/**
- * QZone定向分享，可以@到具体好友，完成后将触发responseDidReceived:forMessage:回调，message：“SendStory”
- * \param params 参数字典
- * \param fopenIdArray 第三方应用预传人好友列表，好友以openid标识
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)sendStory:(NSMutableDictionary *)params friendList:(NSArray *)fopenIdArray;
-
-/**
- * 发送应用邀请，完成后将触发responseDidReceived:forMessage:回调，message：“AppInvitation”
- * \param desc 应用的描述文字，不超过35字符，如果为nil或@“”则显示默认描述
- * \param imageUrl 应用的图标，如果为nil或者@“”则显示默认图标
- * \param source 透传参数，由开发者自定义该参数内容
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)sendAppInvitationWithDescription:(NSString *)desc imageURL:(NSString *)imageUrl source:(NSString *)source;
-
-/**
- * 发起PK或者发送炫耀，完成后将触发responseDidReceived:forMessage:回调，message：“AppChallenge”
- * \param receiver 必须指定一位进行PK或者炫耀的好友，填写其OpenID，填写多个OpenID将截取第一个
- * \param type 类型，"pk"或者“brag”
- * \param imageUrl 炫耀/挑战场景图的URL
- * \param message 炫耀/挑战中的内容描述，不超过50个字符，超过限制则自动截断
- * \param source 透传参数，由开发者自定义该参数内容
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)sendChallenge:(NSString *)receiver type:(NSString *)type imageURL:(NSString *)imageUrl message:(NSString *)message source:(NSString *)source;
-
-/**
- * 赠送或者请求礼物，完成后将触发responseDidReceived:forMessage:回调，message：“AppGiftRequest”
- * \param receiver 赠送或者请求礼物的好友的OpenID，支持填写多个，OpenID之用","分隔，为nil时将由用户通过好友选择器选择好友
- * \param exclude 用户通过好友选择器选择好友场景下，希望排除的好友（不显示在好友选择器）
- * \param specified 用户通过好友选择器选择好友场景下，希望出现的指定好友
- * \param only 是否只显示specified指定的好友
- * \param type 类型，"request"或者“freegift”
- * \param title 免费礼物或请求名称，不超过6个字符
- * \param message 礼物或请求的默认赠言，控制在35个汉字以内，超过限制自动截断
- * \param imageUrl 请求或礼物配图的URL，如果不传，则默认在弹框中显示应用的icon
- * \param source 透传参数，由开发者自定义该参数内容
- * \return 处理结果，YES表示API调用成功，NO表示API调用失败，登录态失败，重新登录
- */
-- (BOOL)sendGiftRequest:(NSString *)receiver exclude:(NSString *)exclude specified:(NSString *)specified only:(BOOL)only type:(NSString *)type title:(NSString *)title message:(NSString *)message imageURL:(NSString *)imageUrl source:(NSString *)source;
 
 /**
  * 退出指定API调用
@@ -350,7 +323,11 @@
  */
 - (BOOL)sendAPIRequest:(TCAPIRequest *)request callback:(id<TCAPIRequestDelegate>)callback;
 
+- (NSString *)getUserOpenID;
+
 @end
+
+#pragma mark - TencentLoginDelegate(授权登录回调协议)
 
 /**
  * \brief TencentLoginDelegate iOS Open SDK 1.3 API回调协议
@@ -383,14 +360,21 @@
  */
 - (NSArray *)getAuthorizedPermissions:(NSArray *)permissions withExtraParams:(NSDictionary *)extraParams;
 
+/**
+ * unionID获得
+ */
+- (void)didGetUnionID;
 @end
+
+#pragma mark - TencentSessionDelegate(开放接口回调协议)
 
 /**
  * \brief TencentSessionDelegate iOS Open SDK 1.3 API回调协议
  *
  * 第三方应用需要实现每条需要调用的API的回调协议
  */
-@protocol TencentSessionDelegate<NSObject, TencentLoginDelegate, TencentApiInterfaceDelegate>
+@protocol TencentSessionDelegate<NSObject, TencentLoginDelegate,
+                                TencentWebViewDelegate>
 
 @optional
 
@@ -437,114 +421,6 @@
  */
 - (void)getUserInfoResponse:(APIResponse*) response;
 
-/**
- * 获取用户QZone相册列表回调
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- * \remarks 正确返回示例: \snippet example/getListAlbumResponse.exp success
- *          错误返回示例: \snippet example/getListAlbumResponse.exp fail
- */
-- (void)getListAlbumResponse:(APIResponse*) response;
-
-/**
- * 获取用户QZone相片列表
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- * \remarks 正确返回示例: \snippet example/getListPhotoResponse.exp success
- *          错误返回示例: \snippet example/getListPhotoResponse.exp fail
- */
-- (void)getListPhotoResponse:(APIResponse*) response;
-
-/**
- * 检查是否是QZone某个用户的粉丝回调
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- * \remarks 正确返回示例: \snippet example/checkPageFansResponse.exp success
- *          错误返回示例: \snippet example/checkPageFansResponse.exp fail
- */
-- (void)checkPageFansResponse:(APIResponse*) response;
- 
-/**
- * 分享到QZone回调
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- * \remarks 正确返回示例: \snippet example/addShareResponse.exp success
- *          错误返回示例: \snippet example/addShareResponse.exp fail
- */
-- (void)addShareResponse:(APIResponse*) response;
-
-/**
- * 在QZone相册中创建一个新的相册回调
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- * \remarks 正确返回示例: \snippet example/addAlbumResponse.exp success
- *          错误返回示例: \snippet example/addAlbumResponse.exp fail
- */
-- (void)addAlbumResponse:(APIResponse*) response;
-
-/**
- * 上传照片到QZone指定相册回调
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- * \remarks 正确返回示例: \snippet example/uploadPicResponse.exp success
- *          错误返回示例: \snippet example/uploadPicResponse.exp fail
- */
-- (void)uploadPicResponse:(APIResponse*) response;
-
-
-/**
- * 在QZone中发表一篇日志回调
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- * \remarks 正确返回示例: \snippet example/addOneBlogResponse.exp success
- *          错误返回示例: \snippet example/addOneBlogResponse.exp fail
- */
-- (void)addOneBlogResponse:(APIResponse*) response;
-
-/**
- * 在QZone中发表一条说说回调
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- * \remarks 正确返回示例: \snippet example/addTopicResponse.exp success
- *          错误返回示例: \snippet example/addTopicResponse.exp fail
- */
-- (void)addTopicResponse:(APIResponse*) response;
-
-/**
- * 设置QQ头像回调
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- * \remarks 正确返回示例: \snippet example/setUserHeadpicResponse.exp success
- *          错误返回示例: \snippet example/setUserHeadpicResponse.exp fail
- */
-- (void)setUserHeadpicResponse:(APIResponse*) response;
-
-/**
- * 获取QQ会员信息回调
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- * \remarks 正确返回示例: \snippet example/getVipInfoResponse.exp success
- *          错误返回示例: \snippet example/getVipInfoResponse.exp fail
- */
-- (void)getVipInfoResponse:(APIResponse*) response;
-
-/**
- * 获取QQ会员详细信息回调
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- */
-- (void)getVipRichInfoResponse:(APIResponse*) response;
-
-/**
- * 获取微博好友名称输入提示回调
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- * \remarks 正确返回示例: \snippet example/matchNickTipsResponse.exp success
- *          错误返回示例: \snippet example/matchNickTipsResponse.exp fail
- */
-- (void)matchNickTipsResponse:(APIResponse*) response;
-
-/**
- * 获取最近的微博好友回调
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- * \remarks 正确返回示例: \snippet example/getIntimateFriendsResponse.exp success
- *          错误返回示例: \snippet example/getIntimateFriendsResponse.exp fail
- */
-- (void)getIntimateFriendsResponse:(APIResponse*) response;
-
-/**
- * sendStory分享的回调（已废弃，使用responseDidReceived:forMessage:）
- * \param response API返回结果，具体定义参见sdkdef.h文件中\ref APIResponse
- */
-- (void)sendStoryResponse:(APIResponse*) response;
 
 /**
  * 社交API统一回调接口
@@ -570,6 +446,18 @@
  * \param viewController 需要关闭的viewController
  */
 - (void)tencentOAuth:(TencentOAuth *)tencentOAuth doCloseViewController:(UIViewController *)viewController;
+@end
 
+#pragma mark - TencentWebViewDelegate(H5登录webview旋转方向回调)
 
+/**
+ * \brief TencentWebViewDelegate: H5登录webview旋转方向回调协议
+ *
+ * 第三方应用可以根据自己APP的旋转方向限制，通过此协议设置
+ */
+@protocol TencentWebViewDelegate <NSObject>
+@optional
+- (BOOL) tencentWebViewShouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation;
+- (NSUInteger) tencentWebViewSupportedInterfaceOrientationsWithWebkit;
+- (BOOL) tencentWebViewShouldAutorotateWithWebkit;
 @end
